@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
-import type { ChantSource, CheerStructure } from '../services/chantService';
-import { generateChant, STRUCTURE_LIMITS } from '../services/chantService';
-import { Zap, Music, Layers, Rows3, Palette, Check } from 'lucide-react';
+import type { ChantSource, ChantStyle, CheerStructure, ChantResult } from '../services/chantService';
+import { generateMultipleChants, getSportTerms, STRUCTURE_LIMITS } from '../services/chantService';
+import { Zap, Music, Layers, Rows3, Palette, Check, Copy, RefreshCw, Megaphone, Flame, MessageSquare } from 'lucide-react';
 
 const SPORTS = [
   'Football',
@@ -16,11 +16,44 @@ const SPORTS = [
   'Tennis',
 ] as const;
 
+const STYLES: { value: ChantStyle; label: string; icon: typeof Megaphone; desc: string }[] = [
+  { value: 'standard', label: 'Standard', icon: Megaphone, desc: 'Classic AABB rhyming chants' },
+  { value: 'call_and_response', label: 'Call & Response', icon: MessageSquare, desc: 'Leader-crowd interaction' },
+  { value: 'aggressive', label: 'Aggressive', icon: Flame, desc: 'Bold & in-your-face' },
+];
+
 const DEFAULT_HEX_PRIMARY = '#5b21b6';
 const DEFAULT_HEX_SECONDARY = '#db2777';
 
 function rangeInclusive(min: number, max: number): number[] {
   return Array.from({ length: max - min + 1 }, (_, i) => min + i);
+}
+
+/** Renders a single chant line with LEADER/CROWD highlighting for call & response */
+function ChantLine({ line, primaryHex, secondaryHex }: { line: string; primaryHex: string; secondaryHex: string }) {
+  if (/^(LEADER|Leader):/i.test(line)) {
+    const text = line.replace(/^(LEADER|Leader):\s*/i, '');
+    return (
+      <div className="flex gap-2">
+        <span className="shrink-0 font-bold" style={{ color: primaryHex }}>LEADER:</span>
+        <span>{text}</span>
+      </div>
+    );
+  }
+  if (/^(CROWD|Crowd):/i.test(line)) {
+    const text = line.replace(/^(CROWD|Crowd):\s*/i, '');
+    return (
+      <div className="flex gap-2">
+        <span className="shrink-0 font-bold" style={{ color: secondaryHex }}>CROWD:</span>
+        <span>{text}</span>
+      </div>
+    );
+  }
+  // ALL CAPS lines get bold treatment
+  if (/^[A-Z\s!,.'—\-]+$/.test(line) && line.length > 5) {
+    return <div className="font-bold">{line}</div>;
+  }
+  return <div>{line}</div>;
 }
 
 export function CheerChantGenerator() {
@@ -29,61 +62,61 @@ export function CheerChantGenerator() {
   const [competitorMascot, setCompetitorMascot] = useState('');
   const [stanzas, setStanzas] = useState(2);
   const [linesPerStanza, setLinesPerStanza] = useState(4);
+  const [style, setStyle] = useState<ChantStyle>('standard');
   const [primaryColorName, setPrimaryColorName] = useState('Purple');
   const [secondaryColorName, setSecondaryColorName] = useState('Gold');
   const [primaryHex, setPrimaryHex] = useState(DEFAULT_HEX_PRIMARY);
   const [secondaryHex, setSecondaryHex] = useState(DEFAULT_HEX_SECONDARY);
-  const [chant, setChant] = useState('');
-  const [chantSource, setChantSource] = useState<ChantSource | null>(null);
+  const [chants, setChants] = useState<ChantResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const totalLinesPreview = stanzas * linesPerStanza;
+  const sportTerms = getSportTerms(sport);
 
-  const handleGenerateChant = async () => {
-    if (!schoolMascot.trim() || !competitorMascot.trim()) {
-      setError('Please enter both your school mascot and the competitor mascot.');
+  const handleGenerate = async () => {
+    if (!schoolMascot.trim()) {
+      setError('Please enter your school mascot.');
       return;
     }
 
-    const structure: CheerStructure = {
-      stanzas,
-      linesPerStanza,
-    };
+    const structure: CheerStructure = { stanzas, linesPerStanza };
 
     setError('');
     setLoading(true);
-    setCopyState('idle');
+    setCopiedIndex(null);
     try {
-      const result = await generateChant(sport, schoolMascot, competitorMascot, structure, {
-        primary: primaryColorName,
-        secondary: secondaryColorName,
-      });
-      setChant(result.chant);
-      setChantSource(result.source);
+      const results = await generateMultipleChants(
+        sport,
+        schoolMascot,
+        competitorMascot,
+        structure,
+        { primary: primaryColorName, secondary: secondaryColorName },
+        style,
+        3,
+      );
+      setChants(results);
     } catch (err) {
-      setError('Failed to generate chant. Please try again.');
+      setError('Failed to generate chants. Please try again.');
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = useCallback(async () => {
-    if (!chant) return;
+  const handleCopy = useCallback(async (text: string, index: number) => {
     try {
-      await navigator.clipboard.writeText(chant);
-      setCopyState('copied');
-      window.setTimeout(() => setCopyState('idle'), 2000);
+      await navigator.clipboard.writeText(text);
+      setCopiedIndex(index);
+      window.setTimeout(() => setCopiedIndex(null), 2000);
     } catch {
-      setCopyState('error');
-      window.setTimeout(() => setCopyState('idle'), 2500);
+      // fallback: do nothing
     }
-  }, [chant]);
+  }, []);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-3xl">
       <div className="mb-8 text-center">
         <div className="mb-4 flex items-center justify-center gap-3">
           <Music className="h-8 w-8" style={{ color: primaryHex }} />
@@ -91,134 +124,47 @@ export function CheerChantGenerator() {
           <Music className="h-8 w-8" style={{ color: secondaryHex }} />
         </div>
         <p className="text-lg text-gray-600">
-          Tune structure, weave in school colors in the chant, then generate.
+          Pick a style, customize your team, and generate crowd-ready chants.
         </p>
       </div>
 
       <div className="rounded-xl bg-white p-6 shadow-lg sm:p-8">
-        <div className="mb-8 space-y-6">
-          <div>
-            <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-              <Layers className="h-4 w-4" style={{ color: primaryHex }} />
-              Structure
-            </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">Stanzas</label>
-                <select
-                  value={stanzas}
-                  onChange={(e) => setStanzas(Number(e.target.value))}
-                  aria-label="Number of stanzas"
-                  className="w-full rounded-lg border-2 border-gray-200 bg-white px-4 py-2.5 text-gray-800 transition focus:border-purple-500 focus:outline-none"
-                  style={{
-                    borderColor: `${primaryHex}33`,
-                  }}
+        {/* Style Selector */}
+        <div className="mb-6">
+          <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <Zap className="h-4 w-4" style={{ color: primaryHex }} />
+            Chant Style
+          </label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {STYLES.map((s) => {
+              const Icon = s.icon;
+              const isActive = style === s.value;
+              return (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setStyle(s.value)}
+                  className={`flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition ${
+                    isActive
+                      ? 'border-current shadow-sm'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  style={isActive ? { borderColor: primaryHex, backgroundColor: `${primaryHex}08` } : undefined}
                 >
-                  {rangeInclusive(
-                    STRUCTURE_LIMITS.stanzas.min,
-                    STRUCTURE_LIMITS.stanzas.max,
-                  ).map((n) => (
-                    <option key={n} value={n}>
-                      {n} {n === 1 ? 'stanza' : 'stanzas'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
-                  <Rows3 className="h-3.5 w-3.5 shrink-0" />
-                  Lines per stanza
-                </label>
-                <select
-                  value={linesPerStanza}
-                  onChange={(e) => setLinesPerStanza(Number(e.target.value))}
-                  aria-label="Lines per stanza"
-                  className="w-full rounded-lg border-2 border-gray-200 bg-white px-4 py-2.5 text-gray-800 transition focus:border-purple-500 focus:outline-none"
-                  style={{ borderColor: `${secondaryHex}33` }}
-                >
-                  {rangeInclusive(
-                    STRUCTURE_LIMITS.linesPerStanza.min,
-                    STRUCTURE_LIMITS.linesPerStanza.max,
-                  ).map((n) => (
-                    <option key={n} value={n}>
-                      {n} lines
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <p className="mt-2 text-sm text-gray-500">
-              About <span className="font-semibold text-gray-700">{totalLinesPreview}</span> lines total (
-              {stanzas} × {linesPerStanza}), grouped with blank lines between stanzas.
-            </p>
-            <p className="mt-2 text-xs leading-relaxed text-gray-400">
-              Lines follow the curated template order (wrapping cleanly) so each stanza flows; each new
-              chant picks a random starting point for variety.
-            </p>
-          </div>
-
-          <div className="border-t border-gray-100 pt-6">
-            <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
-              <Palette className="h-4 w-4" style={{ color: secondaryHex }} />
-              School colors
-            </label>
-            <p className="mb-4 text-xs text-gray-500">
-              Names appear in chant lines (say them how you cheer). Swatches personalize buttons and headings.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">Primary—chant</label>
-                <input
-                  type="text"
-                  value={primaryColorName}
-                  onChange={(e) => setPrimaryColorName(e.target.value)}
-                  placeholder="e.g. Navy, Crimson"
-                  className="mb-2 w-full rounded-lg border-2 border-gray-200 px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none"
-                  style={{
-                    borderColor: `${primaryHex}55`,
-                    boxShadow: `inset 0 0 0 1px ${primaryHex}18`,
-                  }}
-                />
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={primaryHex}
-                    onChange={(e) => setPrimaryHex(e.target.value)}
-                    className="h-10 w-14 cursor-pointer rounded border border-gray-200 bg-white p-0.5"
-                    aria-label="Primary accent color"
-                  />
-                  <span className="text-xs text-gray-500">Accent (UI)</span>
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-600">Secondary—chant</label>
-                <input
-                  type="text"
-                  value={secondaryColorName}
-                  onChange={(e) => setSecondaryColorName(e.target.value)}
-                  placeholder="e.g. Gold, Silver"
-                  className="mb-2 w-full rounded-lg border-2 border-gray-200 px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none"
-                  style={{
-                    borderColor: `${secondaryHex}55`,
-                    boxShadow: `inset 0 0 0 1px ${secondaryHex}18`,
-                  }}
-                />
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={secondaryHex}
-                    onChange={(e) => setSecondaryHex(e.target.value)}
-                    className="h-10 w-14 cursor-pointer rounded border border-gray-200 bg-white p-0.5"
-                    aria-label="Secondary accent color"
-                  />
-                  <span className="text-xs text-gray-500">Accent (UI)</span>
-                </div>
-              </div>
-            </div>
+                  <Icon className="h-5 w-5 shrink-0" style={{ color: isActive ? primaryHex : '#9ca3af' }} />
+                  <div>
+                    <div className={`text-sm font-semibold ${isActive ? 'text-gray-900' : 'text-gray-700'}`}>
+                      {s.label}
+                    </div>
+                    <div className="text-xs text-gray-500">{s.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Sport */}
+        {/* Sport + Terms */}
         <div className="mb-6 border-t border-gray-100 pt-6">
           <label className="mb-2 block text-sm font-semibold text-gray-700">Sport</label>
           <select
@@ -229,105 +175,249 @@ export function CheerChantGenerator() {
             style={{ borderColor: `${primaryHex}40` }}
           >
             {SPORTS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {sportTerms.slice(0, 6).map((term) => (
+              <span
+                key={term}
+                className="rounded-full px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: `${primaryHex}12`, color: primaryHex }}
+              >
+                {term}
+              </span>
+            ))}
+            <span className="rounded-full px-2 py-0.5 text-xs text-gray-400">
+              +{sportTerms.length - 6} more terms injected
+            </span>
+          </div>
         </div>
 
-        <div className="mb-6">
-          <label className="mb-2 block text-sm font-semibold text-gray-700">Your school mascot</label>
-          <input
-            type="text"
-            value={schoolMascot}
-            onChange={(e) => setSchoolMascot(e.target.value)}
-            placeholder="e.g., Tigers, Eagles, Dragons"
-            className="w-full rounded-lg border-2 px-4 py-3 text-gray-900 transition placeholder:text-gray-400 focus:outline-none"
-            style={{ borderColor: `${primaryHex}40` }}
-          />
+        {/* Structure */}
+        <div className="mb-6 border-t border-gray-100 pt-6">
+          <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <Layers className="h-4 w-4" style={{ color: primaryHex }} />
+            Structure
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">Stanzas</label>
+              <select
+                value={stanzas}
+                onChange={(e) => setStanzas(Number(e.target.value))}
+                aria-label="Number of stanzas"
+                className="w-full rounded-lg border-2 border-gray-200 bg-white px-4 py-2.5 text-gray-800 transition focus:outline-none"
+                style={{ borderColor: `${primaryHex}33` }}
+              >
+                {rangeInclusive(STRUCTURE_LIMITS.stanzas.min, STRUCTURE_LIMITS.stanzas.max).map((n) => (
+                  <option key={n} value={n}>{n} {n === 1 ? 'stanza' : 'stanzas'}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-medium text-gray-600">
+                <Rows3 className="h-3.5 w-3.5 shrink-0" />
+                Lines per stanza
+              </label>
+              <select
+                value={linesPerStanza}
+                onChange={(e) => setLinesPerStanza(Number(e.target.value))}
+                aria-label="Lines per stanza"
+                className="w-full rounded-lg border-2 border-gray-200 bg-white px-4 py-2.5 text-gray-800 transition focus:outline-none"
+                style={{ borderColor: `${secondaryHex}33` }}
+              >
+                {rangeInclusive(STRUCTURE_LIMITS.linesPerStanza.min, STRUCTURE_LIMITS.linesPerStanza.max).map((n) => (
+                  <option key={n} value={n}>{n} lines</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-gray-500">
+            <span className="font-semibold text-gray-700">{totalLinesPreview}</span> lines total ({stanzas} × {linesPerStanza}) per chant. Generates 3 variations to pick from.
+          </p>
         </div>
 
-        <div className="mb-6">
-          <label className="mb-2 block text-sm font-semibold text-gray-700">Competitor mascot</label>
-          <input
-            type="text"
-            value={competitorMascot}
-            onChange={(e) => setCompetitorMascot(e.target.value)}
-            placeholder="e.g., Lions, Bears, Wolves"
-            className="w-full rounded-lg border-2 px-4 py-3 text-gray-900 transition placeholder:text-gray-400 focus:outline-none"
-            style={{ borderColor: `${secondaryHex}40` }}
-          />
+        {/* Colors */}
+        <div className="mb-6 border-t border-gray-100 pt-6">
+          <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <Palette className="h-4 w-4" style={{ color: secondaryHex }} />
+            School colors
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">Primary color name</label>
+              <input
+                type="text"
+                value={primaryColorName}
+                onChange={(e) => setPrimaryColorName(e.target.value)}
+                placeholder="e.g. Navy, Crimson"
+                className="mb-2 w-full rounded-lg border-2 border-gray-200 px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none"
+                style={{ borderColor: `${primaryHex}55` }}
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={primaryHex}
+                  onChange={(e) => setPrimaryHex(e.target.value)}
+                  className="h-9 w-12 cursor-pointer rounded border border-gray-200 bg-white p-0.5"
+                  aria-label="Primary accent color"
+                />
+                <span className="text-xs text-gray-500">UI accent</span>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-gray-600">Secondary color name</label>
+              <input
+                type="text"
+                value={secondaryColorName}
+                onChange={(e) => setSecondaryColorName(e.target.value)}
+                placeholder="e.g. Gold, Silver"
+                className="mb-2 w-full rounded-lg border-2 border-gray-200 px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none"
+                style={{ borderColor: `${secondaryHex}55` }}
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={secondaryHex}
+                  onChange={(e) => setSecondaryHex(e.target.value)}
+                  className="h-9 w-12 cursor-pointer rounded border border-gray-200 bg-white p-0.5"
+                  aria-label="Secondary accent color"
+                />
+                <span className="text-xs text-gray-500">UI accent</span>
+              </div>
+            </div>
+          </div>
         </div>
 
+        {/* Mascots */}
+        <div className="mb-6 border-t border-gray-100 pt-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">Your school mascot</label>
+              <input
+                type="text"
+                value={schoolMascot}
+                onChange={(e) => setSchoolMascot(e.target.value)}
+                placeholder="e.g., Tigers, Eagles"
+                className="w-full rounded-lg border-2 px-4 py-3 text-gray-900 transition placeholder:text-gray-400 focus:outline-none"
+                style={{ borderColor: `${primaryHex}40` }}
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-gray-700">Competitor mascot</label>
+              <input
+                type="text"
+                value={competitorMascot}
+                onChange={(e) => setCompetitorMascot(e.target.value)}
+                placeholder="e.g., Lions, Bears (optional)"
+                className="w-full rounded-lg border-2 px-4 py-3 text-gray-900 transition placeholder:text-gray-400 focus:outline-none"
+                style={{ borderColor: `${secondaryHex}40` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Error */}
         {error && (
           <div role="alert" className="mb-6 rounded-lg bg-red-100 px-4 py-3 text-red-800">
             {error}
           </div>
         )}
 
+        {/* Generate Button */}
         <button
           type="button"
-          onClick={handleGenerateChant}
+          onClick={handleGenerate}
           disabled={loading}
-          className="w-full rounded-lg px-6 py-3 font-bold text-white shadow-sm transition hover:opacity-95 hover:shadow-md disabled:opacity-45"
-          style={{
-            background: `linear-gradient(90deg, ${primaryHex}, ${secondaryHex})`,
-          }}
+          className="w-full rounded-lg px-6 py-3.5 font-bold text-white shadow-sm transition hover:opacity-95 hover:shadow-md disabled:opacity-45"
+          style={{ background: `linear-gradient(90deg, ${primaryHex}, ${secondaryHex})` }}
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Generating chant…
+              <RefreshCw className="h-5 w-5 animate-spin" />
+              Generating 3 chants…
             </span>
           ) : (
             <span className="flex items-center justify-center gap-2">
               <Zap className="h-5 w-5" />
-              Generate chant
+              Generate Chants
             </span>
           )}
         </button>
 
-        {chant && (
-          <div className="mt-8">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-bold text-gray-800">Your chant</h2>
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  chantSource === 'ai'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-                title={chantSource === 'ai' ? 'Generated by local Ocean82 model' : 'Generated by built-in template engine'}
+        {/* Results — 3 chant cards */}
+        {chants.length > 0 && (
+          <div className="mt-8 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800">Your chants</h2>
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={loading}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100"
               >
-                {chantSource === 'ai' ? 'Engine: Local AI' : 'Engine: Template'}
-              </span>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Regenerate
+              </button>
             </div>
-            <div
-              className="whitespace-pre-wrap rounded-lg border border-gray-100 p-6 leading-relaxed text-gray-900"
-              style={{
-                background: `linear-gradient(145deg, ${primaryHex}12, ${secondaryHex}12)`,
-              }}
-            >
-              {chant}
-            </div>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-semibold text-white transition hover:brightness-105"
-              style={{ backgroundColor: primaryHex }}
-            >
-              {copyState === 'copied' ? (
-                <>
-                  <Check className="h-5 w-5" />
-                  Copied
-                </>
-              ) : copyState === 'error' ? (
-                <>Copy blocked—select text manually</>
-              ) : (
-                <>Copy chant</>
-              )}
-            </button>
+
+            {chants.map((result, index) => (
+              <div
+                key={index}
+                className="overflow-hidden rounded-lg border border-gray-100 transition hover:border-gray-200"
+                style={{ background: `linear-gradient(145deg, ${primaryHex}06, ${secondaryHex}06)` }}
+              >
+                {/* Card header */}
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
+                      style={{ backgroundColor: primaryHex }}
+                    >
+                      {index + 1}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        result.source === 'ai'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {result.source === 'ai' ? 'Local AI' : 'Template'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(result.chant, index)}
+                    className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition hover:bg-gray-100"
+                    style={{ color: copiedIndex === index ? '#059669' : '#6b7280' }}
+                  >
+                    {copiedIndex === index ? (
+                      <><Check className="h-3.5 w-3.5" /> Copied</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5" /> Copy</>
+                    )}
+                  </button>
+                </div>
+
+                {/* Chant content with line highlighting */}
+                <div className="space-y-1 px-5 py-4 text-gray-900 leading-relaxed">
+                  {result.chant.split('\n').map((line, lineIdx) => (
+                    line === '' ? (
+                      <div key={lineIdx} className="h-3" />
+                    ) : (
+                      <ChantLine
+                        key={lineIdx}
+                        line={line}
+                        primaryHex={primaryHex}
+                        secondaryHex={secondaryHex}
+                      />
+                    )
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

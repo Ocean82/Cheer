@@ -35,4 +35,17 @@ coverage/
 backend/.venv/
 backend/__pycache__/
 backend/.pytest_cache/
+backend/ai/
 *.pyc
+
+# Temp / scratch projects
+temp/
+
+# Large model files (never commit)
+*.gguf
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin

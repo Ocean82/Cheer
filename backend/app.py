@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 import re
@@ -12,7 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from transformers import pipeline
 
-DEFAULT_MODEL_PATH = r"D:\MY-MODELS\models--Ocean82--lyrics-generator"
+DEFAULT_MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "ai",
+    "models--Ocean82--lyrics-generator",
+)
 
 
 class Colors(BaseModel):
@@ -24,8 +28,8 @@ class GenerateRequest(BaseModel):
     sport: str
     schoolMascot: str
     competitorMascot: str
-    stanzas: int = Field(ge=1, le=14)
-    linesPerStanza: int = Field(ge=2, le=14)
+    stanzas: int = Field(ge=1, le=6)
+    linesPerStanza: int = Field(ge=2, le=6)
     colors: Colors
 
 
@@ -50,21 +54,44 @@ def _normalize_output(text: str, stanzas: int, lines_per_stanza: int) -> str:
 
     normalized: list[str] = []
     for block in blocks:
-        lines = [_line_cleanup(line) for line in block.split("\n")]
-        lines = [line for line in lines if line]
+        lines = [_line_cleanup(ln) for ln in block.split("\n")]
+        lines = [ln for ln in lines if ln]
         if len(lines) != lines_per_stanza:
             raise ValueError(
-                f"Expected {lines_per_stanza} lines per stanza, got {len(lines)}"
+                f"Expected {lines_per_stanza} "
+                f"lines/stanza, got {len(lines)}"
             )
         normalized.append("\n".join(lines))
 
     return "\n\n".join(normalized)
 
 
-def _coerce_output_shape(text: str, stanzas: int, lines_per_stanza: int) -> str:
-    """Best-effort reshape when strict parsing fails."""
-    cleaned_lines = [_line_cleanup(line) for line in text.replace("\r\n", "\n").split("\n")]
-    cleaned_lines = [line for line in cleaned_lines if line]
+def _is_usable_line(line: str) -> bool:
+    """Filter out lines too short or non-lyric noise."""
+    if len(line) < 4:
+        return False
+    return not re.fullmatch(r"[.!?,;:\-\u2013\u2014\s]+", line)
+
+
+def _deduplicate_consecutive(lines: list[str]) -> list[str]:
+    """Remove consecutive duplicate lines."""
+    if not lines:
+        return lines
+    result = [lines[0]]
+    for line in lines[1:]:
+        if line.lower().strip() != result[-1].lower().strip():
+            result.append(line)
+    return result
+
+
+def _coerce_output_shape(
+    text: str, stanzas: int, lines_per_stanza: int
+) -> str:
+    """Clean, deduplicate, then fit to requested structure."""
+    raw = text.replace("\r\n", "\n").split("\n")
+    cleaned_lines = [_line_cleanup(ln) for ln in raw]
+    cleaned_lines = [ln for ln in cleaned_lines if _is_usable_line(ln)]
+    cleaned_lines = _deduplicate_consecutive(cleaned_lines)
     target_lines = stanzas * lines_per_stanza
 
     if not cleaned_lines:
@@ -80,45 +107,40 @@ def _coerce_output_shape(text: str, stanzas: int, lines_per_stanza: int) -> str:
         cleaned_lines = cleaned_lines[:target_lines]
 
     stanza_chunks: list[str] = []
-    for s in range(stanzas):
-        start = s * lines_per_stanza
+    for stanza_idx in range(stanzas):
+        start = stanza_idx * lines_per_stanza
         end = start + lines_per_stanza
         stanza_chunks.append("\n".join(cleaned_lines[start:end]))
     return "\n\n".join(stanza_chunks)
 
 
 def _color_phrase(colors: Colors) -> str:
-    p = colors.primary.strip()
-    s = colors.secondary.strip()
-    if p and s:
-        return f"{p} and {s}"
-    if p:
-        return p
-    if s:
-        return s
-    return "our colors"
+    primary = colors.primary.strip()
+    secondary = colors.secondary.strip()
+    if primary and secondary:
+        return f"{primary} and {secondary}"
+    if primary:
+        return primary
+    return secondary if secondary else "our colors"
 
 
 def _build_prompt(req: GenerateRequest) -> str:
-    color_phrase = _color_phrase(req.colors)
+    """Build a continuation-style seed for Ocean82.
+
+    Ocean82 is a lyrics continuation model, not an
+    instruction follower. We give it context as a natural
+    lyric opening and let it generate freely. Structure
+    enforcement happens in post-processing.
+    """
+    color_ph = _color_phrase(req.colors)
+    school = req.schoolMascot.strip()
+    competitor = req.competitorMascot.strip()
+    sport = req.sport.strip()
+
     return (
-        "Write a school-friendly cheer chant.\\n"
-        "Strict rules (must follow exactly):\\n"
-        f"- Output exactly {req.stanzas} stanzas.\\n"
-        f"- Each stanza must have exactly {req.linesPerStanza} lines.\\n"
-        "- Put exactly one blank line between stanzas.\\n"
-        "- Do not add titles, labels, numbering, markdown, bullets, or explanation.\\n"
-        "- Keep lines chant-ready, energetic, and family-friendly.\\n"
-        "- Keep each line short (roughly 5-11 words).\\n"
-        "- Mention the school mascot and competitor mascot naturally.\\n"
-        f"- Include school colors phrase: {color_phrase}.\\n"
-        "- Keep it suitable for live crowd chanting.\\n"
-        "Context:\\n"
-        f"Sport: {req.sport}\\n"
-        f"School mascot: {req.schoolMascot}\\n"
-        f"Competitor mascot: {req.competitorMascot}\\n"
-        f"School colors: {color_phrase}\\n"
-        "Output only the chant text."
+        f"{sport} cheer chant, "
+        f"{school} vs {competitor}, {color_ph}:\n\n"
+        f"Go {school}! "
     )
 
 
@@ -128,10 +150,11 @@ def get_generator():
     model_path = Path(configured_path)
     if not model_path.exists():
         raise RuntimeError(
-            f"Model path not found: {configured_path}. Set CHEER_MODEL_PATH to a valid path."
+            f"Model path not found: {configured_path}. "
+            "Set CHEER_MODEL_PATH to a valid path."
         )
 
-    # Support pointing to HF cache root (models--.../snapshots/<hash>).
+    # Support HF cache root (models--.../snapshots/<hash>).
     if (model_path / "snapshots").is_dir():
         snapshots = sorted(
             [p for p in (model_path / "snapshots").iterdir() if p.is_dir()],
@@ -139,12 +162,17 @@ def get_generator():
             reverse=True,
         )
         if not snapshots:
-            raise RuntimeError(f"No snapshots found under: {model_path / 'snapshots'}")
+            raise RuntimeError(
+                "No snapshots found under: " f"{model_path / 'snapshots'}"
+            )
         model_path = snapshots[0]
 
     config_path = model_path / "config.json"
     if not config_path.exists():
-        raise RuntimeError(f"Missing config.json in model path: {model_path}")
+        raise RuntimeError(
+            "Missing config.json in model path: "
+            f"{model_path}"
+        )
 
     return pipeline(
         task="text-generation",
@@ -171,7 +199,10 @@ def health() -> dict[str, str]:
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"message": "Cheer Local AI Server running. Use POST /generate-chant"}
+    return {
+        "message": "Cheer Local AI Server running. "
+        "Use POST /generate-chant"
+    }
 
 
 @app.post("/generate-chant", response_model=GenerateResponse)
@@ -179,38 +210,64 @@ def generate_chant(req: GenerateRequest) -> GenerateResponse:
     try:
         generator = get_generator()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Model load failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Model load failed: {exc}",
+        ) from exc
 
     prompt = _build_prompt(req)
-    max_new_tokens = max(96, min(384, req.stanzas * req.linesPerStanza * 12))
+    target_lines = req.stanzas * req.linesPerStanza
+    # Overshoot tokens — Ocean82 produces ~1 line per
+    # 8-12 tokens. We trim in post-processing.
+    max_new_tokens = max(128, target_lines * 20)
 
-    candidates: list[str] = []
-    last_text = ""
-    for temperature in (0.8, 0.65):
+    all_lines: list[str] = []
+    for temperature in (0.85, 0.7, 0.95):
         try:
             output = generator(
                 prompt,
                 max_new_tokens=max_new_tokens,
                 do_sample=True,
                 temperature=temperature,
-                top_p=0.9,
-                repetition_penalty=1.08,
+                top_p=0.92,
+                repetition_penalty=1.15,
                 return_full_text=False,
                 num_return_sequences=1,
                 pad_token_id=generator.tokenizer.eos_token_id,
             )
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Inference failed: {exc}") from exc
-        text = output[0]["generated_text"].strip()
-        last_text = text
-        candidates.append(text)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Inference failed: {exc}",
+            ) from exc
 
+        text = output[0]["generated_text"].strip()
+
+        # Try strict parse (unlikely but free win)
         try:
             chant = _normalize_output(text, req.stanzas, req.linesPerStanza)
-            return GenerateResponse(chant=chant, source="ocean82-lyrics-generator")
+            return GenerateResponse(
+                chant=chant,
+                source="ocean82-lyrics-generator",
+            )
         except ValueError:
-            continue
+            pass
 
-    # Preserve UX by coercing to exact requested structure if strict parsing fails.
-    chant = _coerce_output_shape(last_text or "\n".join(candidates), req.stanzas, req.linesPerStanza)
+        # Collect usable lines from this pass
+        raw_lines = text.replace("\r\n", "\n").split("\n")
+        lines = [_line_cleanup(ln) for ln in raw_lines]
+        lines = [ln for ln in lines if _is_usable_line(ln)]
+        all_lines.extend(lines)
+
+        # Stop early if we have enough unique material
+        deduped = _deduplicate_consecutive(all_lines)
+        if len(deduped) >= target_lines:
+            break
+
+    # Assemble final output from collected lines
+    chant = _coerce_output_shape(
+        "\n".join(all_lines),
+        req.stanzas,
+        req.linesPerStanza,
+    )
     return GenerateResponse(chant=chant, source="ocean82-lyrics-generator")
