@@ -30,3 +30,9 @@ Thumbs.db
 
 # Testing / coverage (if added later)
 coverage/
+
+# Python local AI backend
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+*.pyc
