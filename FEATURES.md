@@ -1,11 +1,13 @@
 # Cheer Chant Generator - Features
 
 ## Overview
+
 A fun and interactive web app for cheerleaders to generate competitive, school-friendly chants tailored to their sport and school mascot.
 
 ## Key Features
 
 ### 1. **Sport Selection**
+
    - Choose from 10 different sports:
      - Football
      - Basketball
@@ -19,48 +21,63 @@ A fun and interactive web app for cheerleaders to generate competitive, school-f
      - Tennis
 
 ### 2. **Customizable Mascots**
+
    - Enter your school mascot
-   - Enter the competitor mascot
-   - Both are incorporated into the generated chants
+   - Enter the competitor mascot (optional but encouraged for rivalry flavor)
+   - Both are woven into generated lines when relevant
 
 ### 3. **Sport-Specific Chants**
-   - Each sport has unique, sport-relevant terminology and themes
-   - Football chants focus on field dominance and touchdowns
-   - Basketball chants highlight fast breaks and scoring
-   - Volleyball chants emphasize serving and blocking
-   - Soccer chants showcase possession and teamwork
-   - And more!
 
-### 4. **Chant Generation**
-   - Generates 10-15 line chants randomly selected from curated templates
-   - Each generation is unique while maintaining quality and school-friendly content
-   - Fast generation with visual feedback
+   - Each sport has unique, sport-relevant terminology injected into templates
+   - Football: gridiron, touchdowns, etc.
+   - Basketball: fast breaks, defense, etc.
+   - Other sports follow the same pattern
 
-### 5. **User-Friendly Interface**
-   - Clean, modern design with gradient backgrounds
-   - Clear input fields and dropdown menus
-   - One-click copy functionality to clipboard
-   - Loading states and error handling
-   - Responsive design for desktop and mobile
+### 4. **Chant Structure**
 
-### 6. **Content Quality**
-   - All chants are:
-     - School-appropriate and family-friendly
-     - Competitive and energetic
-     - Sport-specific with relevant terminology
-     - Focused on victory and team spirit
-     - 10-15 lines long for optimal chanting length
+   - **Stanzas:** 1–4 (short, repeatable segments suited to sidelines and timeouts)
+   - **Lines per stanza:** 1–6
+   - **Total lines:** up to **24** at maximum settings (4 × 6). Typical use is smaller for fast call-and-response or sideline chants.
+   - Bounds are shared between the UI, template engine, and local AI API (`src/constants/chantStructure.ts` / `backend/constants.py`) so generation stays within what the local models budget for (see comments in those files).
+
+### 5. **Generation Modes**
+
+   - **Standard:** Three template-based variations per click (fast, works offline).
+   - **Creative:** Optional single chant via local **Llama-Song-Stream-3B** when the Python server and GGUF model are configured (`/generate-creative`).
+   - With **local AI** enabled for Ocean82 (`/generate-chant`), standard mode may label outputs “Local AI” when inference succeeds and passes validation; otherwise templates are used automatically.
+
+### 6. **Styles**
+
+   - Standard rhyming chants
+   - Call-and-response patterns (some lines support LEADER/CROWD highlighting when prefixed that way)
+   - Aggressive / high-energy phrasing
+
+### 7. **User-Friendly Interface**
+
+   - Clean layout with school color accents (names + optional color pickers)
+   - One-click copy per chant card
+   - Loading states and basic error messaging
+   - Responsive layout for desktop and mobile
+
+### 8. **Content Quality**
+
+   - Templates aim for school-appropriate, energetic, sport-aware lines
+   - AI output is validated for short, chant-like lines before display (with fallback to templates)
 
 ## How to Use
 
-1. Select your sport from the dropdown
-2. Enter your school mascot (e.g., Tigers, Eagles, Dragons)
-3. Enter the competitor mascot (e.g., Lions, Bears, Wolves)
-4. Click "Generate Chant"
-5. Copy the chant to your clipboard and start cheering!
+1. Pick a **chant style** and **sport**
+2. Set **structure** (stanzas × lines per stanza)
+3. Enter **school colors** (names and optional UI accents)
+4. Enter **your mascot** and optionally **competitor mascot**
+5. Toggle **Creative Mode** only if your local creative model server is running
+6. Click **Generate Chants** (or **Generate Creative Chant** in creative mode)
+7. **Copy** the chant you like
 
 ## Technical Stack
+
 - React with TypeScript
-- Vite for fast development and building
+- Vite for development and production builds
 - Tailwind CSS for styling
 - Lucide React for icons
+- Optional FastAPI backend for local inference (see main README)

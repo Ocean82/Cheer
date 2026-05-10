@@ -1,6 +1,15 @@
 import { useCallback, useState } from 'react';
-import type { ChantSource, ChantStyle, CheerStructure, ChantResult } from '../services/chantService';
-import { generateMultipleChants, generateCreativeChant, getSportTerms, STRUCTURE_LIMITS } from '../services/chantService';
+import type { ChantStyle, CheerStructure, ChantResult } from '../services/chantService';
+import {
+  generateMultipleChants,
+  generateCreativeChant,
+  getSportTerms,
+  STRUCTURE_LIMITS,
+  clearAiDebug,
+  getAiDebugSnapshot,
+  type AiDebugEntry,
+} from '../services/chantService';
+import { cn } from '../utils/cn';
 import { Zap, Music, Layers, Rows3, Palette, Check, Copy, RefreshCw, Megaphone, Flame, MessageSquare, Sparkles } from 'lucide-react';
 
 const SPORTS = [
@@ -24,6 +33,9 @@ const STYLES: { value: ChantStyle; label: string; icon: typeof Megaphone; desc: 
 
 const DEFAULT_HEX_PRIMARY = '#5b21b6';
 const DEFAULT_HEX_SECONDARY = '#db2777';
+
+/** When true (`.env`), shows AI fetch/validation diagnostics after each generate. */
+const SHOW_AI_DEBUG = import.meta.env.VITE_DEBUG_AI?.toLowerCase() === 'true';
 
 function rangeInclusive(min: number, max: number): number[] {
   return Array.from({ length: max - min + 1 }, (_, i) => min + i);
@@ -72,6 +84,7 @@ export function CheerChantGenerator() {
   const [error, setError] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [creativeMode, setCreativeMode] = useState(false);
+  const [aiDebugLines, setAiDebugLines] = useState<AiDebugEntry[]>([]);
 
   const totalLinesPreview = stanzas * linesPerStanza;
   const sportTerms = getSportTerms(sport);
@@ -88,6 +101,8 @@ export function CheerChantGenerator() {
     setError('');
     setLoading(true);
     setCopiedIndex(null);
+    clearAiDebug();
+    if (SHOW_AI_DEBUG) setAiDebugLines([]);
     try {
       if (creativeMode) {
         // Creative mode: single AI-generated chant (slower, higher quality)
@@ -107,6 +122,7 @@ export function CheerChantGenerator() {
       console.error(err);
     } finally {
       setLoading(false);
+      if (SHOW_AI_DEBUG) setAiDebugLines(getAiDebugSnapshot());
     }
   };
 
@@ -149,16 +165,17 @@ export function CheerChantGenerator() {
                   key={s.value}
                   type="button"
                   onClick={() => setStyle(s.value)}
-                  className={`flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition ${
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left transition',
                     isActive
                       ? 'border-current shadow-sm'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                      : 'border-gray-200 hover:border-gray-300',
+                  )}
                   style={isActive ? { borderColor: primaryHex, backgroundColor: `${primaryHex}08` } : undefined}
                 >
                   <Icon className="h-5 w-5 shrink-0" style={{ color: isActive ? primaryHex : '#9ca3af' }} />
                   <div>
-                    <div className={`text-sm font-semibold ${isActive ? 'text-gray-900' : 'text-gray-700'}`}>
+                    <div className={cn('text-sm font-semibold', isActive ? 'text-gray-900' : 'text-gray-700')}>
                       {s.label}
                     </div>
                     <div className="text-xs text-gray-500">{s.desc}</div>
@@ -330,6 +347,28 @@ export function CheerChantGenerator() {
           </div>
         )}
 
+        {SHOW_AI_DEBUG && aiDebugLines.length > 0 && (
+          <div
+            className="mb-6 max-h-52 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50/95 px-4 py-3 text-left font-mono text-xs leading-snug text-amber-950 shadow-sm"
+            role="region"
+            aria-label="AI debug log"
+          >
+            <div className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+              AI debug (VITE_DEBUG_AI)
+            </div>
+            <ul className="space-y-2">
+              {aiDebugLines.map((entry, i) => (
+                <li key={`${entry.source}-${entry.step}-${i}`}>
+                  <span className="font-semibold text-amber-950">
+                    [{entry.source}/{entry.step}]
+                  </span>{' '}
+                  {entry.detail}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Creative Mode Toggle */}
         <div className="mb-4 rounded-lg border-2 border-dashed border-gray-200 p-4">
           <label className="flex cursor-pointer items-center justify-between gap-3">
@@ -347,17 +386,20 @@ export function CheerChantGenerator() {
             <button
               type="button"
               role="switch"
-              aria-checked={creativeMode}
+              aria-checked={creativeMode ? 'true' : 'false'}
+              aria-label="Creative mode"
               onClick={() => setCreativeMode(!creativeMode)}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                creativeMode ? '' : 'bg-gray-300'
-              }`}
+              className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+                !creativeMode && 'bg-gray-300',
+              )}
               style={creativeMode ? { backgroundColor: primaryHex } : undefined}
             >
               <span
-                className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                  creativeMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
+                className={cn(
+                  'inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform',
+                  creativeMode ? 'translate-x-6' : 'translate-x-1',
+                )}
               />
             </button>
           </label>
@@ -421,11 +463,12 @@ export function CheerChantGenerator() {
                       {index + 1}
                     </span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs font-medium',
                         result.source === 'ai'
                           ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
+                          : 'bg-slate-100 text-slate-600',
+                      )}
                     >
                       {result.source === 'ai' ? 'Local AI' : 'Template'}
                     </span>

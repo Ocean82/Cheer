@@ -11,7 +11,7 @@ The app supports two generation paths:
 
 - **Sports** — Football, basketball, volleyball, cheerleading, soccer, track & field, wrestling, baseball, softball, and tennis.
 - **Inputs** — Your school mascot and the competitor mascot are woven into curated lines.
-- **Output** — 10–15 lines per generation, copied to the clipboard in one click.
+- **Output** — Configurable length (**1–4 stanzas**, **1–6 lines per stanza**; up to **24 lines** total). Most squads will use fewer lines for quick sideline chants. One-click copy per result card.
 - **Deploy** — Production build is a **single HTML file** (via `vite-plugin-singlefile`), easy to host on any static file host.
 
 ## Tech stack
@@ -62,6 +62,8 @@ copy .env.example .env
 ```env
 VITE_USE_LOCAL_AI=true
 VITE_AI_API_URL=http://127.0.0.1:8000/generate-chant
+# Optional: surface AI failure reasons in the page while testing
+# VITE_DEBUG_AI=true
 ```
 
 Then run:
@@ -79,6 +81,10 @@ If AI mode is disabled or the server/model fails, the app uses the built-in temp
 | `npm run dev` | Start dev server with hot reload |
 | `npm run build` | Production build to `dist/` (single inlined HTML) |
 | `npm run preview` | Serve the production build locally |
+| `npm run typecheck` | Run `tsc --noEmit` (strict settings in `tsconfig.json`) |
+| `npm run test` | Run Vitest unit tests |
+
+Continuous integration (GitHub Actions) runs `typecheck`, `test`, and `build` on push and pull requests.
 
 ## Project layout
 
@@ -87,15 +93,18 @@ src/
   App.tsx                      # Root layout
   main.tsx                     # Entry
   index.css                    # Tailwind entry
+  constants/
+    chantStructure.ts          # Shared stanza/line bounds (keep in sync with backend)
   components/
     CheerChantGenerator.tsx    # Main UI
   services/
     chantService.ts            # Template generation + optional local AI bridge
-backend/
-  app.py                       # FastAPI local AI endpoint
-  requirements.txt             # Python dependencies for local inference
   utils/
     cn.ts                      # Class name helper (tailwind-merge + clsx)
+backend/
+  app.py                       # FastAPI local AI endpoints
+  constants.py                 # Same chant bounds as frontend (API validation)
+  requirements.txt             # Python dependencies for local inference
 ```
 
 More detail on product behavior lives in [FEATURES.md](./FEATURES.md).

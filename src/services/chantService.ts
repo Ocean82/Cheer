@@ -1,10 +1,6 @@
-/** Bounds for chant structure (UI dropdowns mirror these). */
-export const STRUCTURE_LIMITS = {
-  stanzas: { min: 1, max: 6 },
-  linesPerStanza: { min: 2, max: 6 },
-} as const;
+import { MAX_TOTAL_LINES, STRUCTURE_LIMITS } from '../constants/chantStructure';
 
-const MAX_TOTAL_LINES = STRUCTURE_LIMITS.stanzas.max * STRUCTURE_LIMITS.linesPerStanza.max;
+export { MAX_TOTAL_LINES, STRUCTURE_LIMITS } from '../constants/chantStructure';
 
 export type CheerStructure = {
   stanzas: number;
@@ -82,7 +78,7 @@ function primaryColor(names: SchoolColorNames): string {
   return 'pride';
 }
 
-function clampStructure(raw: CheerStructure): CheerStructure {
+export function clampStructure(raw: CheerStructure): CheerStructure {
   const st = Math.min(
     Math.max(Math.round(raw.stanzas), STRUCTURE_LIMITS.stanzas.min),
     STRUCTURE_LIMITS.stanzas.max,
@@ -115,7 +111,7 @@ type LineGenerator = (
  * Each generator returns 4 lines that rhyme and flow for crowd chanting.
  */
 const STANDARD_TEMPLATES: LineGenerator[] = [
-  (school, competitor, colors, terms) => {
+  (school, _competitor, colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const col = colorPhrase(colors);
     return [
@@ -125,7 +121,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `Win this game, heart and soul!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const t2 = capitalize(pickRandom(terms));
     return [
@@ -135,7 +131,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} is here to dominate at last!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, colors, terms) => {
     const col = primaryColor(colors);
     const t1 = capitalize(pickRandom(terms));
     return [
@@ -145,7 +141,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} owns the game tonight!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const t2 = capitalize(pickRandom(terms));
     return [
@@ -155,7 +151,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} dominates, seize the day!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, colors, _terms) => {
     const col = primaryColor(colors);
     return [
       `${school}! ${school}! Let's go!`,
@@ -164,7 +160,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} wins, we want it all!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     return competitor ? [
       `Step aside, ${competitor}, move out the way!`,
@@ -178,7 +174,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} dominates this whole place!`,
     ];
   },
-  (school, _competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const t2 = capitalize(pickRandom(terms));
     return [
@@ -188,7 +184,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `Best game that you've ever met!`,
     ];
   },
-  (school, _competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const t2 = capitalize(pickRandom(terms));
     return [
@@ -198,7 +194,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} spirit, never back down!`,
     ];
   },
-  (school, _competitor, colors) => {
+  (school, _competitor, colors, _terms) => {
     const col = colorPhrase(colors);
     return [
       `${school}! ${school}! Hear the roar!`,
@@ -207,8 +203,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `Nobody's bringing ${school} down!`,
     ];
   },
-  (school, competitor, colors, terms) => {
-    const t1 = capitalize(pickRandom(terms));
+  (school, _competitor, colors, _terms) => {
     const col = colorPhrase(colors);
     return [
       `Feel the power, feel the might,`,
@@ -217,7 +212,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `Champions all, all day long!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const col = primaryColor(colors);
     return [
@@ -227,7 +222,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
       `${school} power, built to last!`,
     ];
   },
-  (school, competitor, colors) => {
+  (school, competitor, colors, _terms) => {
     const col = colorPhrase(colors);
     return competitor ? [
       `${competitor} better watch their back!`,
@@ -247,7 +242,7 @@ const STANDARD_TEMPLATES: LineGenerator[] = [
  * Call-and-response templates (LEADER / CROWD format).
  */
 const CALL_RESPONSE_TEMPLATES: LineGenerator[] = [
-  (school, competitor, colors) => {
+  (school, _competitor, colors, _terms) => {
     const col = colorPhrase(colors);
     return [
       `Who's the best? ${school}! ${school}!`,
@@ -266,7 +261,7 @@ const CALL_RESPONSE_TEMPLATES: LineGenerator[] = [
       `${t}! ${school} in the house!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t = capitalize(pickRandom(terms));
     return [
       `What team? ${school}!`,
@@ -275,7 +270,7 @@ const CALL_RESPONSE_TEMPLATES: LineGenerator[] = [
       `${t}! ${t}! We score more!`,
     ];
   },
-  (school, competitor, colors) => {
+  (school, competitor, colors, _terms) => {
     const col = colorPhrase(colors);
     return competitor ? [
       `Who are we? ${school}!`,
@@ -289,7 +284,7 @@ const CALL_RESPONSE_TEMPLATES: LineGenerator[] = [
       `${school} power! Own the night!`,
     ];
   },
-  (school, _competitor, colors) => {
+  (school, _competitor, colors, _terms) => {
     const col = primaryColor(colors);
     return [
       `When I say ${school}, you say FIGHT!`,
@@ -298,7 +293,7 @@ const CALL_RESPONSE_TEMPLATES: LineGenerator[] = [
       `${school} pride! Nationwide!`,
     ];
   },
-  (school, _competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t = capitalize(pickRandom(terms));
     return [
       `Who runs this? We do! We do!`,
@@ -313,7 +308,7 @@ const CALL_RESPONSE_TEMPLATES: LineGenerator[] = [
  * Aggressive / intimidation-style templates.
  */
 const AGGRESSIVE_TEMPLATES: LineGenerator[] = [
-  (school, competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const t2 = capitalize(pickRandom(terms));
     return [
@@ -323,7 +318,7 @@ const AGGRESSIVE_TEMPLATES: LineGenerator[] = [
       `${school.toUpperCase()} IS HERE — IT'S TOO LATE!`,
     ];
   },
-  (school, competitor, colors) => {
+  (school, competitor, colors, _terms) => {
     const col = colorPhrase(colors).toUpperCase();
     return competitor ? [
       `${competitor.toUpperCase()} BETTER WATCH OUT!`,
@@ -337,7 +332,7 @@ const AGGRESSIVE_TEMPLATES: LineGenerator[] = [
       `${school.toUpperCase()} WINS WITH HEART AND SOUL!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, _competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     const t2 = capitalize(pickRandom(terms));
     return [
@@ -347,7 +342,7 @@ const AGGRESSIVE_TEMPLATES: LineGenerator[] = [
       `LEAVE 'EM BROKEN ON THE YARD!`,
     ];
   },
-  (school, _competitor, colors) => {
+  (school, _competitor, colors, _terms) => {
     const col = primaryColor(colors).toUpperCase();
     return [
       `UNSTOPPABLE! UNBREAKABLE!`,
@@ -356,7 +351,7 @@ const AGGRESSIVE_TEMPLATES: LineGenerator[] = [
       `${school.toUpperCase()} WILL NEVER STOP!`,
     ];
   },
-  (school, competitor, colors, terms) => {
+  (school, competitor, _colors, terms) => {
     const t1 = capitalize(pickRandom(terms));
     return competitor ? [
       `${competitor.toUpperCase()}! YOU'RE GOING DOWN!`,
@@ -511,6 +506,69 @@ function parseAndValidateAiOutput(raw: string, structure: CheerStructure): strin
   return normalizedStanzas.join('\n\n');
 }
 
+/** Explains why `parseAndValidateAiOutput` would reject output (for `VITE_DEBUG_AI` only). */
+function describeValidationFailure(raw: string, structure: CheerStructure): string {
+  const cleaned = raw.replace(/\r\n/g, '\n').trim();
+  if (!cleaned) return 'empty model output';
+
+  const rawStanzas = cleaned
+    .split(/\n\s*\n/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (rawStanzas.length !== structure.stanzas) {
+    return `stanza blocks: need ${structure.stanzas}, got ${rawStanzas.length} (use blank lines between stanzas)`;
+  }
+
+  for (let si = 0; si < rawStanzas.length; si++) {
+    const lines = rawStanzas[si].split('\n').map((l) => sanitizeLine(l)).filter(Boolean);
+    if (lines.length !== structure.linesPerStanza) {
+      return `stanza ${si + 1}: need ${structure.linesPerStanza} non-empty line(s), got ${lines.length}`;
+    }
+    for (let li = 0; li < lines.length; li++) {
+      if (!looksLikeChantLine(lines[li])) {
+        return `stanza ${si + 1}, line ${li + 1}: failed chant checks (too long, too short, or prose-like)`;
+      }
+    }
+  }
+  return 'validation failed (unexpected)';
+}
+
+// ---------------------------------------------------------------------------
+// Optional AI diagnostics — set `VITE_DEBUG_AI=true` in `.env` while testing
+// ---------------------------------------------------------------------------
+
+export type AiDebugEntry = {
+  source: 'ocean82' | 'creative';
+  step: string;
+  detail: string;
+};
+
+const aiDebugLog: AiDebugEntry[] = [];
+
+function aiDebugEnabled(): boolean {
+  return (import.meta.env.VITE_DEBUG_AI as string | undefined)?.toLowerCase() === 'true';
+}
+
+function pushAiDebug(entry: AiDebugEntry): void {
+  if (!aiDebugEnabled()) return;
+  aiDebugLog.push(entry);
+}
+
+/** Clear log before a user-initiated generation run. */
+export function clearAiDebug(): void {
+  aiDebugLog.length = 0;
+}
+
+/** Snapshot of messages recorded since the last `clearAiDebug()`. */
+export function getAiDebugSnapshot(): AiDebugEntry[] {
+  return [...aiDebugLog];
+}
+
+function errMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 async function generateAiChant(
   sport: string,
   school: string,
@@ -520,7 +578,14 @@ async function generateAiChant(
 ): Promise<string | null> {
   const endpoint = (import.meta.env.VITE_AI_API_URL as string | undefined)?.trim() || DEFAULT_AI_ENDPOINT;
   const enabled = (import.meta.env.VITE_USE_LOCAL_AI as string | undefined)?.toLowerCase() === 'true';
-  if (!enabled) return null;
+  if (!enabled) {
+    pushAiDebug({
+      source: 'ocean82',
+      step: 'skipped',
+      detail: 'VITE_USE_LOCAL_AI is not true — template path only',
+    });
+    return null;
+  }
 
   const payload: AiRequest = {
     sport,
@@ -540,20 +605,45 @@ async function generateAiChant(
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      pushAiDebug({
+        source: 'ocean82',
+        step: 'http',
+        detail: `POST ${endpoint} → ${response.status} ${response.statusText}`,
+      });
+      return null;
+    }
 
     const data = (await response.json()) as { chant?: string };
-    if (!data?.chant) return null;
+    if (!data?.chant) {
+      pushAiDebug({
+        source: 'ocean82',
+        step: 'response',
+        detail: 'JSON parsed but missing `chant` field',
+      });
+      return null;
+    }
 
     // Validate the AI output actually looks like a chant, not a story
     const validated = parseAndValidateAiOutput(data.chant, structure);
     if (!validated) {
       console.warn('AI output rejected: does not look like a chant. Falling back to template.');
+      pushAiDebug({
+        source: 'ocean82',
+        step: 'validation',
+        detail: describeValidationFailure(data.chant, structure),
+      });
       return null;
     }
     return validated;
   } catch (error) {
     console.warn('AI generation unavailable, falling back to template generation.', error);
+    const msg = errMessage(error);
+    pushAiDebug({
+      source: 'ocean82',
+      step: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network',
+      detail: msg.slice(0, 240),
+    });
     return null;
   } finally {
     window.clearTimeout(timeout);
@@ -634,7 +724,14 @@ async function generateCreativeAiChant(
     ? baseUrl.replace(/\/generate-chant$/, '/generate-creative')
     : DEFAULT_CREATIVE_ENDPOINT;
   const enabled = (import.meta.env.VITE_USE_LOCAL_AI as string | undefined)?.toLowerCase() === 'true';
-  if (!enabled) return null;
+  if (!enabled) {
+    pushAiDebug({
+      source: 'creative',
+      step: 'skipped',
+      detail: 'VITE_USE_LOCAL_AI is not true — template path only',
+    });
+    return null;
+  }
 
   const payload = {
     sport,
@@ -656,10 +753,24 @@ async function generateCreativeAiChant(
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      pushAiDebug({
+        source: 'creative',
+        step: 'http',
+        detail: `POST ${endpoint} → ${response.status} ${response.statusText}`,
+      });
+      return null;
+    }
 
     const data = (await response.json()) as { chant?: string };
-    if (!data?.chant) return null;
+    if (!data?.chant) {
+      pushAiDebug({
+        source: 'creative',
+        step: 'response',
+        detail: 'JSON parsed but missing `chant` field',
+      });
+      return null;
+    }
 
     // Validate output looks like a chant
     const validated = parseAndValidateAiOutput(data.chant, structure);
@@ -668,13 +779,28 @@ async function generateCreativeAiChant(
     // If strict validation fails, accept it if lines look chant-like
     const lines = data.chant.split('\n').map(sanitizeLine).filter(Boolean);
     if (lines.length >= structure.stanzas * structure.linesPerStanza && lines.every(looksLikeChantLine)) {
+      pushAiDebug({
+        source: 'creative',
+        step: 'relaxed_accept',
+        detail: 'Strict stanza split failed; accepted flat line list that passed line checks',
+      });
       return data.chant;
     }
 
     console.warn('Creative AI output did not pass validation.');
+    pushAiDebug({
+      source: 'creative',
+      step: 'validation',
+      detail: describeValidationFailure(data.chant, structure),
+    });
     return null;
   } catch (error) {
     console.warn('Creative AI unavailable.', error);
+    pushAiDebug({
+      source: 'creative',
+      step: error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'network',
+      detail: errMessage(error).slice(0, 240),
+    });
     return null;
   } finally {
     window.clearTimeout(timeout);

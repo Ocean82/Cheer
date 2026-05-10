@@ -12,6 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from transformers import GenerationConfig, pipeline
 
+from .constants import (
+    LINES_PER_STANZA_MAX,
+    LINES_PER_STANZA_MIN,
+    STANZAS_MAX,
+    STANZAS_MIN,
+)
+
 # Force HuggingFace to stay offline — use local models only
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -32,8 +39,8 @@ class GenerateRequest(BaseModel):
     sport: str
     schoolMascot: str
     competitorMascot: str
-    stanzas: int = Field(ge=1, le=6)
-    linesPerStanza: int = Field(ge=2, le=6)
+    stanzas: int = Field(ge=STANZAS_MIN, le=STANZAS_MAX)
+    linesPerStanza: int = Field(ge=LINES_PER_STANZA_MIN, le=LINES_PER_STANZA_MAX)
     colors: Colors
 
 
@@ -213,8 +220,8 @@ def generate_chant(req: GenerateRequest) -> GenerateResponse:
 
     prompt = _build_prompt(req)
     target_lines = req.stanzas * req.linesPerStanza
-    # Overshoot tokens — Ocean82 produces ~1 line per
-    # 8-12 tokens. We trim in post-processing.
+    # Overshoot tokens — Ocean82 produces ~1 line per 8–12 tokens; we trim in post-processing.
+    # With caps in constants.py (max 4×6 lines), target_lines * 20 stays modest vs model limits.
     max_new_tokens = max(128, target_lines * 20)
 
     all_lines: list[str] = []
@@ -288,8 +295,8 @@ class CreativeRequest(BaseModel):
     sport: str
     schoolMascot: str
     competitorMascot: str = ""
-    stanzas: int = Field(ge=1, le=6)
-    linesPerStanza: int = Field(ge=2, le=6)
+    stanzas: int = Field(ge=STANZAS_MIN, le=STANZAS_MAX)
+    linesPerStanza: int = Field(ge=LINES_PER_STANZA_MIN, le=LINES_PER_STANZA_MAX)
     colors: Colors
     style: str = "standard"
 
