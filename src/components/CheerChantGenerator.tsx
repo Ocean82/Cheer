@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import type { ChantSource, ChantStyle, CheerStructure, ChantResult } from '../services/chantService';
-import { generateMultipleChants, getSportTerms, STRUCTURE_LIMITS } from '../services/chantService';
-import { Zap, Music, Layers, Rows3, Palette, Check, Copy, RefreshCw, Megaphone, Flame, MessageSquare } from 'lucide-react';
+import { generateMultipleChants, generateCreativeChant, getSportTerms, STRUCTURE_LIMITS } from '../services/chantService';
+import { Zap, Music, Layers, Rows3, Palette, Check, Copy, RefreshCw, Megaphone, Flame, MessageSquare, Sparkles } from 'lucide-react';
 
 const SPORTS = [
   'Football',
@@ -71,6 +71,7 @@ export function CheerChantGenerator() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [creativeMode, setCreativeMode] = useState(false);
 
   const totalLinesPreview = stanzas * linesPerStanza;
   const sportTerms = getSportTerms(sport);
@@ -82,21 +83,25 @@ export function CheerChantGenerator() {
     }
 
     const structure: CheerStructure = { stanzas, linesPerStanza };
+    const colors = { primary: primaryColorName, secondary: secondaryColorName };
 
     setError('');
     setLoading(true);
     setCopiedIndex(null);
     try {
-      const results = await generateMultipleChants(
-        sport,
-        schoolMascot,
-        competitorMascot,
-        structure,
-        { primary: primaryColorName, secondary: secondaryColorName },
-        style,
-        3,
-      );
-      setChants(results);
+      if (creativeMode) {
+        // Creative mode: single AI-generated chant (slower, higher quality)
+        const result = await generateCreativeChant(
+          sport, schoolMascot, competitorMascot, structure, colors, style,
+        );
+        setChants([result]);
+      } else {
+        // Standard mode: 3 template-based chants (instant)
+        const results = await generateMultipleChants(
+          sport, schoolMascot, competitorMascot, structure, colors, style, 3,
+        );
+        setChants(results);
+      }
     } catch (err) {
       setError('Failed to generate chants. Please try again.');
       console.error(err);
@@ -325,6 +330,44 @@ export function CheerChantGenerator() {
           </div>
         )}
 
+        {/* Creative Mode Toggle */}
+        <div className="mb-4 rounded-lg border-2 border-dashed border-gray-200 p-4">
+          <label className="flex cursor-pointer items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-5 w-5" style={{ color: creativeMode ? primaryHex : '#9ca3af' }} />
+              <div>
+                <div className="text-sm font-semibold text-gray-800">Creative Mode</div>
+                <div className="text-xs text-gray-500">
+                  {creativeMode
+                    ? 'Uses AI for unique, creative chants (20-40s)'
+                    : 'Uses instant template engine (fast, reliable)'}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={creativeMode}
+              onClick={() => setCreativeMode(!creativeMode)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                creativeMode ? '' : 'bg-gray-300'
+              }`}
+              style={creativeMode ? { backgroundColor: primaryHex } : undefined}
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                  creativeMode ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </label>
+          {creativeMode && (
+            <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
+              Requires the local AI server running. Generates 1 unique chant per click.
+            </p>
+          )}
+        </div>
+
         {/* Generate Button */}
         <button
           type="button"
@@ -336,12 +379,12 @@ export function CheerChantGenerator() {
           {loading ? (
             <span className="flex items-center justify-center gap-2">
               <RefreshCw className="h-5 w-5 animate-spin" />
-              Generating 3 chants…
+              {creativeMode ? 'AI is writing…' : 'Generating 3 chants…'}
             </span>
           ) : (
             <span className="flex items-center justify-center gap-2">
-              <Zap className="h-5 w-5" />
-              Generate Chants
+              {creativeMode ? <Sparkles className="h-5 w-5" /> : <Zap className="h-5 w-5" />}
+              {creativeMode ? 'Generate Creative Chant' : 'Generate Chants'}
             </span>
           )}
         </button>

@@ -610,3 +610,98 @@ export async function generateMultipleChants(
 export function getSportTerms(sport: string): string[] {
   return getTerms(sport);
 }
+
+// ---------------------------------------------------------------------------
+// Creative AI generation (Llama-Song-Stream-3B)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CREATIVE_ENDPOINT = 'http://127.0.0.1:8000/generate-creative';
+
+/**
+ * Generate a single chant using the creative AI model.
+ * Returns null if the server is unavailable or disabled.
+ */
+async function generateCreativeAiChant(
+  sport: string,
+  school: string,
+  competitor: string,
+  structure: CheerStructure,
+  colorNames: SchoolColorNames,
+  style: ChantStyle,
+): Promise<string | null> {
+  const baseUrl = (import.meta.env.VITE_AI_API_URL as string | undefined)?.trim() || '';
+  const endpoint = baseUrl
+    ? baseUrl.replace(/\/generate-chant$/, '/generate-creative')
+    : DEFAULT_CREATIVE_ENDPOINT;
+  const enabled = (import.meta.env.VITE_USE_LOCAL_AI as string | undefined)?.toLowerCase() === 'true';
+  if (!enabled) return null;
+
+  const payload = {
+    sport,
+    schoolMascot: school.trim(),
+    competitorMascot: competitor.trim(),
+    stanzas: structure.stanzas,
+    linesPerStanza: structure.linesPerStanza,
+    colors: colorNames,
+    style,
+  };
+
+  const controller = new AbortController();
+  // Creative model is slower — allow 90 seconds
+  const timeout = window.setTimeout(() => controller.abort(), 90_000);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { chant?: string };
+    if (!data?.chant) return null;
+
+    // Validate output looks like a chant
+    const validated = parseAndValidateAiOutput(data.chant, structure);
+    if (validated) return validated;
+
+    // If strict validation fails, accept it if lines look chant-like
+    const lines = data.chant.split('\n').map(sanitizeLine).filter(Boolean);
+    if (lines.length >= structure.stanzas * structure.linesPerStanza && lines.every(looksLikeChantLine)) {
+      return data.chant;
+    }
+
+    console.warn('Creative AI output did not pass validation.');
+    return null;
+  } catch (error) {
+    console.warn('Creative AI unavailable.', error);
+    return null;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+/**
+ * Generate a chant using the creative AI model (Llama-Song-Stream-3B).
+ * Falls back to the standard template engine if AI is unavailable.
+ */
+export async function generateCreativeChant(
+  sport: string,
+  school: string,
+  competitor: string,
+  structure: CheerStructure,
+  colorNames: SchoolColorNames,
+  style: ChantStyle = 'standard',
+): Promise<ChantResult> {
+  const safeStructure = clampStructure(structure);
+  const creative = await generateCreativeAiChant(
+    sport, school, competitor, safeStructure, colorNames, style
+  );
+  if (creative) return { chant: creative, source: 'ai' };
+
+  // Fallback to template
+  const chant = await generateTemplateChant(
+    sport, school, competitor, safeStructure, colorNames, style
+  );
+  return { chant, source: 'template' };
+}

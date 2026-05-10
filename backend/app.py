@@ -10,7 +10,11 @@ import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from transformers import pipeline
+from transformers import GenerationConfig, pipeline
+
+# Force HuggingFace to stay offline — use local models only
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 DEFAULT_MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -58,8 +62,7 @@ def _normalize_output(text: str, stanzas: int, lines_per_stanza: int) -> str:
         lines = [ln for ln in lines if ln]
         if len(lines) != lines_per_stanza:
             raise ValueError(
-                f"Expected {lines_per_stanza} "
-                f"lines/stanza, got {len(lines)}"
+                f"Expected {lines_per_stanza} " f"lines/stanza, got {len(lines)}"
             )
         normalized.append("\n".join(lines))
 
@@ -84,9 +87,7 @@ def _deduplicate_consecutive(lines: list[str]) -> list[str]:
     return result
 
 
-def _coerce_output_shape(
-    text: str, stanzas: int, lines_per_stanza: int
-) -> str:
+def _coerce_output_shape(text: str, stanzas: int, lines_per_stanza: int) -> str:
     """Clean, deduplicate, then fit to requested structure."""
     raw = text.replace("\r\n", "\n").split("\n")
     cleaned_lines = [_line_cleanup(ln) for ln in raw]
@@ -169,14 +170,12 @@ def get_generator():
 
     config_path = model_path / "config.json"
     if not config_path.exists():
-        raise RuntimeError(
-            "Missing config.json in model path: "
-            f"{model_path}"
-        )
+        raise RuntimeError("Missing config.json in model path: " f"{model_path}")
 
     return pipeline(
         task="text-generation",
         model=str(model_path),
+        tokenizer=str(model_path),
         device=-1,
         dtype=torch.float32,
     )
@@ -199,10 +198,7 @@ def health() -> dict[str, str]:
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {
-        "message": "Cheer Local AI Server running. "
-        "Use POST /generate-chant"
-    }
+    return {"message": "Cheer Local AI Server running." " Use POST /generate-chant"}
 
 
 @app.post("/generate-chant", response_model=GenerateResponse)
@@ -224,16 +220,19 @@ def generate_chant(req: GenerateRequest) -> GenerateResponse:
     all_lines: list[str] = []
     for temperature in (0.85, 0.7, 0.95):
         try:
-            output = generator(
-                prompt,
+            gen_config = GenerationConfig(
                 max_new_tokens=max_new_tokens,
                 do_sample=True,
                 temperature=temperature,
                 top_p=0.92,
                 repetition_penalty=1.15,
-                return_full_text=False,
                 num_return_sequences=1,
                 pad_token_id=generator.tokenizer.eos_token_id,
+            )
+            output = generator(
+                prompt,
+                generation_config=gen_config,
+                return_full_text=False,
             )
         except Exception as exc:
             raise HTTPException(
@@ -271,3 +270,151 @@ def generate_chant(req: GenerateRequest) -> GenerateResponse:
         req.linesPerStanza,
     )
     return GenerateResponse(chant=chant, source="ocean82-lyrics-generator")
+
+
+# -------------------------------------------------------------------
+# Creative generation via Llama-Song-Stream-3B (instruction-tuned)
+# -------------------------------------------------------------------
+
+LLAMA_MODEL_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "ai",
+    "Llama-Song-Stream-3B-Instruct-GGUF",
+    "Llama-Song-Stream-3B-Instruct-Q4_K_S.gguf",
+)
+
+
+class CreativeRequest(BaseModel):
+    sport: str
+    schoolMascot: str
+    competitorMascot: str = ""
+    stanzas: int = Field(ge=1, le=6)
+    linesPerStanza: int = Field(ge=2, le=6)
+    colors: Colors
+    style: str = "standard"
+
+
+class CreativeResponse(BaseModel):
+    chant: str
+    source: Literal["llama-song-stream-3b"]
+
+
+@lru_cache(maxsize=1)
+def get_llama_model():
+    from llama_cpp import Llama
+
+    model_path = os.getenv("CREATIVE_MODEL_PATH", LLAMA_MODEL_PATH)
+    if not os.path.exists(model_path):
+        raise RuntimeError(
+            f"Llama model not found: {model_path}." " Set CREATIVE_MODEL_PATH env var."
+        )
+    return Llama(
+        model_path=model_path,
+        n_ctx=2048,
+        n_threads=os.cpu_count() or 4,
+        verbose=False,
+    )
+
+
+def _build_creative_prompt(req: CreativeRequest) -> str:
+    """Build an instruction prompt for the 3B model.
+
+    Unlike Ocean82, this model can follow instructions,
+    so we ask for specific creative qualities.
+    """
+    color_ph = _color_phrase(req.colors)
+    school = req.schoolMascot.strip()
+    competitor = req.competitorMascot.strip()
+    sport = req.sport.strip()
+    total = req.stanzas * req.linesPerStanza
+
+    style_guidance = ""
+    if req.style == "call_and_response":
+        style_guidance = (
+            "Use call-and-response format with " "LEADER: and CROWD: prefixes.\n"
+        )
+    elif req.style == "aggressive":
+        style_guidance = (
+            "Make it bold and intimidating. " "Use ALL CAPS for emphasis lines.\n"
+        )
+
+    rival_line = ""
+    if competitor:
+        rival_line = (
+            f"The rival team is the {competitor}. " "Include playful trash talk.\n"
+        )
+
+    return (
+        f"Write a creative {sport} cheer chant "
+        f"for the {school}.\n"
+        f"School colors: {color_ph}.\n"
+        f"{rival_line}"
+        f"{style_guidance}"
+        "Requirements:\n"
+        f"- Exactly {req.stanzas} stanzas, "
+        f"{req.linesPerStanza} lines each\n"
+        f"- {total} lines total\n"
+        "- Use wordplay, internal rhyme, and "
+        "clever phrasing\n"
+        "- Vary rhythm — mix short punchy lines "
+        "with flowing ones\n"
+        "- Make it sound natural when shouted by "
+        "a crowd in unison\n"
+        "- Include the team name and colors "
+        "naturally\n"
+        "- No titles, labels, numbering, or "
+        "explanation\n"
+        "- Separate stanzas with one blank line\n"
+        "\nChant:\n"
+    )
+
+
+@app.post(
+    "/generate-creative",
+    response_model=CreativeResponse,
+)
+def generate_creative(
+    req: CreativeRequest,
+) -> CreativeResponse:
+    try:
+        llm = get_llama_model()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Creative model load failed: {exc}",
+        ) from exc
+
+    prompt = _build_creative_prompt(req)
+    target_lines = req.stanzas * req.linesPerStanza
+    max_tokens = max(200, target_lines * 25)
+
+    try:
+        output = llm(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=0.85,
+            top_p=0.92,
+            repeat_penalty=1.12,
+            stop=["\n\n\n", "---", "Note:", "###"],
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Creative inference failed: {exc}",
+        ) from exc
+
+    text = output["choices"][0]["text"].strip()
+
+    # Try strict parse first
+    try:
+        chant = _normalize_output(text, req.stanzas, req.linesPerStanza)
+        return CreativeResponse(
+            chant=chant,
+            source="llama-song-stream-3b",
+        )
+    except ValueError:
+        pass
+
+    # Coerce to shape if strict parse fails
+    chant = _coerce_output_shape(text, req.stanzas, req.linesPerStanza)
+    return CreativeResponse(chant=chant, source="llama-song-stream-3b")
